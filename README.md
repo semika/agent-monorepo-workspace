@@ -155,6 +155,10 @@ ex : git@github.com-personal:semika/my-custom-mcp.git
 
 > git push origin master
 
+For detail reference about maintaining two github accounts, refer to the following documentation.
+
+https://www.linkedin.com/pulse/multiple-github-accounts-same-mac-hesham-osama/
+
 ### Reference documentations
 
 Agent skills standard : https://agentskills.io/home
