@@ -1,0 +1,16 @@
+.venv/
+agents/*/.venv/
+__pycache__/
+agents/*/__pycache__/
+*.pyc
+sandbox/
+logs/
+agents/*/logs/
+build/
+dist/
+*.egg-info
+*.png
+.git/
+.github/
+docs/
+README.md

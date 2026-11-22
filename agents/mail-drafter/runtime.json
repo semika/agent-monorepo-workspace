@@ -1,0 +1,12 @@
+{
+  "agentRuntimeName": "mail_drafter",
+  "roleArn": "arn:aws:iam::762002331286:role/AgentRuntimeRole",
+  "agentRuntimeArtifact": {
+    "containerConfiguration": {
+      "containerUri": "762002331286.dkr.ecr.ap-southeast-1.amazonaws.com/mail-drafter:latest"
+    }
+  },
+  "networkConfiguration": {
+    "networkMode": "PUBLIC"
+  }
+}
