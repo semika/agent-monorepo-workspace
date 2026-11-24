@@ -1,6 +1,6 @@
 # Creating AWS Agent Runtime using Bedrock AgentCore Control API
 import boto3
-from config import settings
+from mail_drafter.config import settings
 try:
     client = boto3.client('bedrock-agentcore-control', region_name=settings.aws_region)
 

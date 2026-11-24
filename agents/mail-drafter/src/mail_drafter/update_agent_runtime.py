@@ -1,5 +1,5 @@
 import boto3
-from config import settings
+from mail_drafter.config import settings
 
 client = boto3.client('bedrock-agentcore-control', region_name=settings.aws_region)
 
