@@ -1,31 +1,27 @@
 [project]
-name = "my-custom-agent"
+name = "mail-drafter"
 version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
-requires-python = ">=3.13.1"
+description = "Multi-agent email drafter (gatherer -> drafter -> reviewer) on Bedrock AgentCore"
+requires-python = ">=3.13"
 dependencies = [
+    "agent-shared",
     "boto3>=1.42.16",
     "botocore",
-    "deepagents>=0.6.7",
     "fastapi>=0.127.0",
-    "httpx>=0.28.1",
     "langchain>=1.3.2",
     "langchain-aws>=1.5.0",
-    "langchain-mcp-adapters>=0.3.0",
-    "logging>=0.4.9.6",
+    "langgraph>=1.2.2",
     "pydantic>=2.12.5",
     "strands-agents>=1.20.0",
     "uvicorn[standard]>=0.40.0",
-    "mcp>=1.28.0",
-    "langgraph>=1.2.2",
-    "ipython>=9.15.0",
 ]
 
-[tool.setuptools]
-py-modules = [
-  "agent",
-  "deploy_agent",
-  "invoke_agent",
-  "main"
-]
+[tool.uv.sources]
+agent-shared = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mail_drafter"]

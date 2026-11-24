@@ -1,16 +1,31 @@
-.venv/
-agents/*/.venv/
-__pycache__/
-agents/*/__pycache__/
-*.pyc
-sandbox/
-logs/
-agents/*/logs/
-build/
-dist/
-*.egg-info
-*.png
+# VCS / tooling
 .git/
 .github/
+.claude/
+.vscode/
+.idea/
+
+# Python artifacts
+**/.venv/
+**/__pycache__/
+**/*.py[cod]
+build/
+dist/
+**/*.egg-info/
+
+# Secrets: ideally passed at runtime, not baked into images.
+# TODO: agents still read agents/<name>/.env inside the container; once the
+# AgentCore runtimes get `environmentVariables` instead, drop the exception below.
+#**/.env
+#**/.env.*
+#!agents/*/.env
+
+# Not needed in agent images
+sandbox/
 docs/
-README.md
+**/logs/
+**/*.png
+**/runtime*.json
+**/update-runtime.json
+*.md
+.DS_Store

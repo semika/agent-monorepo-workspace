@@ -13,31 +13,52 @@ Using Amazon titan text model.
 3. Graph enginnering article
    https://www.aibuilderclub.com/blog/graph-engineering-guide-2026      
 
-### Activating python virtual environment in locally
+### Repository layout (uv workspace)
 
-> source .venv/bin/activate
+```
+pyproject.toml            # workspace root: members + dev/sandbox dependency groups
+uv.lock                   # ONE lockfile for every agent and package
+packages/shared/          # "agent-shared" package -> import agent_shared
+  src/agent_shared/
+agents/<name>/            # one deployable agent per folder -> import <name_with_underscores>
+  pyproject.toml          # depends on "agent-shared" (workspace = true)
+  Dockerfile              # built from the repo root
+  .env
+  src/<package>/
+sandbox/                  # standalone learning scripts (not deployed)
+```
 
-### Installing new python library using 'uv' command
-ex 01:
-> uv init
-> uv add langchain deepagents 
+All commands below are run from the **repo root**.
+
+### Setting up locally
+
 > uv sync
 
-ex 02: 
+This creates a single `.venv` at the root with every agent and `agent-shared`
+installed in editable mode (changes to `packages/shared` are picked up immediately).
+In VS Code select `./.venv/bin/python` as the interpreter.
 
-> uv add langchain
-> un sync
+### Managing dependencies
 
-### How to start Fast API applicaiton locally
-> uv run uvicorn agent:app --host 0.0.0.0 --port 8080
+> uv add --package mail-drafter langchain      # dependency of one agent
+> uv add --package agent-shared boto3          # dependency of the shared code
+> uv add --dev pytest                          # local tooling only
+> uv add --group sandbox some-lib              # used only by sandbox/ scripts
 
-The following is the new command to start after restuctring
+### Adding a new agent
 
-> cd agents/mail-drafter
-> PYTHONPATH=$(pwd)/../.. uv run uvicorn main:app --host 0.0.0.0 --port 8080
+> uv init --package agents/<name>
 
-The reason is as follows.
-shared isn't installed as a package into agents/mail-drafter's own .venv — it only resolves inside Docker, where the flat COPY layout puts shared/ as a sibling of main.py in /app (which is on sys.path via CWD). If you run main.py locally straight from inside agents/mail-drafter (not via Docker), import shared... will fail because shared/ is two directories up. Easiest fix for local dev: run with the repo root on PYTHONPATH, e.g. PYTHONPATH=$(pwd)/../.. uv run uvicorn main:app --reload from inside agents/mail-drafter.
+Then add `"agent-shared"` to its dependencies with
+`[tool.uv.sources] agent-shared = { workspace = true }`, and copy
+`agents/mail-drafter/Dockerfile` (replace `mail-drafter` / `mail_drafter`).
+
+### How to start Fast API application locally
+
+> uv run --package mail-drafter uvicorn mail_drafter.main:app --host 0.0.0.0 --port 8080 --reload
+
+Settings are read from `agents/mail-drafter/.env`. AWS credentials must be for the
+account that owns the Bedrock inference profiles (e.g. `export AWS_PROFILE=...`).
 
 ### How to run Fast API end poing via Postman
 
@@ -54,7 +75,7 @@ Json data payload should be as follows.
 
 1. Creating a ECR repository
 
-> aws ecr create-repository --repository-name my-strands-agent --region us-east-1
+> aws ecr create-repository --repository-name my-agent-repository --region ap-southeast-1
 
 2. Login to ECR
 
@@ -63,35 +84,36 @@ Json data payload should be as follows.
 3. Build the docker image and publish it to ECR. When using 'buildx', we can specify additional
 paramters like --platform.
 
-> docker buildx build --platform linux/arm64 -t 762002331286.dkr.ecr.ap-southeast-1.amazonaws.com/agent-repository:latest --push .
-
-New command after refactoring
-
 > docker buildx build --platform linux/arm64 -t 762002331286.dkr.ecr.ap-southeast-1.amazonaws.com/mail-drafter:latest -f agents/mail-drafter/Dockerfile --push .
 
 4. Verify that the image was published to ECR properly.
 
-> aws ecr describe-images --repository-name my-strands-agent --region us-east-1
+> aws ecr describe-images --repository-name mail-drafter --region ap-southeast-1
+
+5. To test the image locally before pushing:
+
+> docker build -f agents/mail-drafter/Dockerfile -t mail-drafter .
+> docker run --rm -p 8080:8080 -v ~/.aws:/root/.aws:ro -e AWS_PROFILE=sawen mail-drafter
 
 ### Creating agent at AWS agent run time
 Run the following python script to create the agent
 
-> uv run deploy_agent.py
+> uv run --package mail-drafter python -m mail_drafter.create_agent_runtime
 
 If you want to update the existing agent, you run the following command
 
-> uv run update_agent.py
+> uv run --package mail-drafter python -m mail_drafter.update_agent_runtime
 
 Creating the run time using command line
 
 > aws bedrock-agentcore-control create-agent-runtime \
-    --cli-input-json file://runtime.json \
+    --cli-input-json file://agents/mail-drafter/runtime.json \
     --region ap-southeast-1
 
 If you want to update the run time using commaand line
 
 > aws bedrock-agentcore-control update-agent-runtime \
-    --cli-input-json file://runtime.json \
+    --cli-input-json file://agents/mail-drafter/update-runtime.json \
     --region ap-southeast-1
 
 ### Invoking a deployed agent runtime
@@ -116,7 +138,7 @@ agent_runtime_id=<your-agent-runtime-id>
 
 Run the script with:
 
-> uv run invoke_agent.py
+> uv run --package mail-drafter python -m mail_drafter.invoke_agent
 
 Notes:
 
@@ -127,20 +149,9 @@ Notes:
 
 ### Sharing code into git
 
-.gitignore file should be as follows.
-
-```
-# uv / python
-.venv/
-venv/
-__pycache__/
-*.pyc
-.python-version
-
-# OS
-.DS_Store
-
-```
+See `.gitignore` at the repo root (venvs, caches, build output, `.env` files,
+logs and generated `runtime-response.json` are excluded). `.python-version` and
+`uv.lock` are committed.
 
 When you switch between two git accounts, you can set the origin URL as follows 
 You need to first get the URL in SSH format from github.

@@ -1,5 +1,5 @@
 from pathlib import Path
-from shared.config.settings import BaseAgentSettings
+from agent_shared.config.settings import BaseAgentSettings
 
 class Settings(BaseAgentSettings):
     agent_arn: str
@@ -10,6 +10,7 @@ class Settings(BaseAgentSettings):
     email_history_table: str = "email-drafts"
 
     class Config:
-        env_file = Path(__file__).parent / ".env"
+        # agents/mail-drafter/.env (this file is at agents/mail-drafter/src/mail_drafter/)
+        env_file = Path(__file__).resolve().parents[2] / ".env"
 
 settings = Settings()

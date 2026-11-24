@@ -1,6 +1,6 @@
 import boto3
 import json
-from config import settings
+from mail_drafter.config import settings
 
 try:
     agent_core_client = boto3.client('bedrock-agentcore', region_name=settings.aws_region)

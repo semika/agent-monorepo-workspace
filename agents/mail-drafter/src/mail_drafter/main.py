@@ -11,12 +11,12 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import interrupt, Command
 from langgraph.config import get_store
 from langchain_core.messages import BaseMessage, AnyMessage, SystemMessage, HumanMessage, AIMessage
-from config import settings
+from mail_drafter.config import settings
 from langchain_aws import ChatBedrockConverse
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from strands import Agent
-from shared.dynamodb_store import DynamoDBStore
+from agent_shared.dynamodb_store import DynamoDBStore
 import uuid
 from botocore.exceptions import ClientError, ParamValidationError
 
@@ -68,7 +68,7 @@ model = ChatBedrockConverse(
 # Model for reviewer
 opus_model = ChatBedrockConverse(
         # claude sonet will have to be used via inference profile.
-        model_id=settings.opus_model_id,  # cross-region inference profile
+        model_id=settings.model_id,  # cross-region inference profile
         region_name=settings.aws_region,
         temperature=1,
         provider='anthropic'
@@ -260,7 +260,8 @@ store = DynamoDBStore(table_name=settings.email_history_table, region_name=setti
 agent = workflow.compile(checkpointer=checkpointer, store=store)
 
 # Show the agent
-graph_path = os.path.join(os.path.dirname(__file__), "multi-agent-workflow..png")
+# Written to the agent root (agents/mail-drafter/), not inside the package
+graph_path = os.path.join(os.path.dirname(__file__), "..", "..", "multi-agent-workflow..png")
 with open(graph_path, "wb") as f:
     f.write(agent.get_graph(xray=True).draw_mermaid_png())
 
