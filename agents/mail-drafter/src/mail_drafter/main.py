@@ -55,14 +55,25 @@ def format_conversation(messages):
         role = getattr(m, "type", "user")
         content = getattr(m, "content", str(m))
         lines.append(f"{role}: {content}")
-    return "\n".join(lines)
+    
+    formatted_message = "\n".join(lines)
+    #Loggin the message for learning purpose
+    logger.info(f"Conversation History: {formatted_message}")    
+    return formatted_message
 
-model = ChatBedrockConverse(
+GUARDRAIL_CONFIG = {
+    "guardrailIdentifier": settings.guardrail_id,
+    "guardrailVersion": settings.guardrail_version,
+    "trace": "enabled",   # "enabled" | "enabled_full" | "disabled"; shows why it intervened
+}
+
+sonet_model = ChatBedrockConverse(
         # claude sonet will have to be used via inference profile.
         model_id=settings.model_id,  # cross-region inference profile
         region_name=settings.aws_region,
         temperature=1,
-        provider='anthropic'
+        provider='anthropic',
+        guardrail_config=GUARDRAIL_CONFIG
     )
 
 # Model for reviewer
@@ -71,7 +82,8 @@ opus_model = ChatBedrockConverse(
         model_id=settings.model_id,  # cross-region inference profile
         region_name=settings.aws_region,
         temperature=1,
-        provider='anthropic'
+        provider='anthropic',
+        guardrail_config=GUARDRAIL_CONFIG
     )
 
 
@@ -83,7 +95,7 @@ class ReviewDecision(BaseModel):
     decision: str = Field(description="Either 'approve' or 'revise'")
     reason: str = Field(description="The reason for the decision")
 
-clarifier_model = model.with_structured_output(ClarifierDecision)
+gatherer_model = sonet_model.with_structured_output(ClarifierDecision)
 reviewer_model = opus_model.with_structured_output(ReviewDecision)
 
 class AgentState(TypedDict):
@@ -123,7 +135,7 @@ def gatherer_agent(state):
             {format_conversation(state.get('messages', []))}
         """)
 
-        decision = clarifier_model.invoke([system_msg])
+        decision = gatherer_model.invoke([system_msg])
         logger.info(f"Gatherer decision: {decision}")
         state["clarification_rounds"] = state.get("clarification_rounds", 0) + 1
 
@@ -133,6 +145,20 @@ def gatherer_agent(state):
             return state
 
         question = decision.question
+
+        '''
+            When you call interrupt, here’s what happens:
+            (1) Graph execution gets suspended at the exact point where interrupt is called.
+            (2) State is saved using the checkpointer so execution can be resumed later, 
+                In production, this should be a persistent checkpointer (e.g. backed by a database)
+            (3) Value ({"question": question}) is returned to the caller under __interrupt__ with the default invoke() API; 
+                it can be any JSON-serializable value (string, object, array, etc.)
+            (4) Graph waits indefinitely until you resume execution with a response.
+            (5) Graph will resume with 'resume' command.
+                agent.invoke(Command(resume=user_query), config=config)
+            (6) The response of the user is passed back into the node when you resume, 
+                becoming the return value of the interrupt() call
+        '''
 
     answer = interrupt({"question": question})
     state["messages"] = [AIMessage(question), HumanMessage(answer)]
@@ -175,7 +201,7 @@ def drafter_agent(state):
 
     """)
 
-    response = model.invoke([system_msg])
+    response = sonet_model.invoke([system_msg])
     draft_respose = response.content if hasattr(response, "content") else str(response)
     state['draft_response'] = draft_respose
     write_text_file(f"draft_output_{state['draft_calls']}.txt", draft_respose)
@@ -228,14 +254,14 @@ def review_router(state) -> str:
     return "drafter_agent"
 
 #Define the workflow
-workflow = StateGraph(AgentState)
+agent_builder = StateGraph(AgentState)
 
-workflow.add_node("gatherer_agent", gatherer_agent)
-workflow.add_node("drafter_agent", drafter_agent)
-workflow.add_node("reviewer_agent", reviewer_agent)
+agent_builder.add_node("gatherer_agent", gatherer_agent)
+agent_builder.add_node("drafter_agent", drafter_agent)
+agent_builder.add_node("reviewer_agent", reviewer_agent)
 
-workflow.set_entry_point("gatherer_agent")
-workflow.add_conditional_edges(
+agent_builder.set_entry_point("gatherer_agent")
+agent_builder.add_conditional_edges(
     "gatherer_agent",
     gatherer_router,
     {
@@ -243,8 +269,8 @@ workflow.add_conditional_edges(
         "gatherer_agent": "gatherer_agent",
     }
 )
-workflow.add_edge("drafter_agent", "reviewer_agent")
-workflow.add_conditional_edges(
+agent_builder.add_edge("drafter_agent", "reviewer_agent")
+agent_builder.add_conditional_edges(
     "reviewer_agent",
     review_router,
     {
@@ -257,7 +283,7 @@ workflow.add_conditional_edges(
 # Use a durable checkpointer in production - backed by a database
 checkpointer = InMemorySaver()
 store = DynamoDBStore(table_name=settings.email_history_table, region_name=settings.aws_region)
-agent = workflow.compile(checkpointer=checkpointer, store=store)
+agent = agent_builder.compile(checkpointer=checkpointer, store=store)
 
 # Show the agent
 # Written to the agent root (agents/mail-drafter/), not inside the package

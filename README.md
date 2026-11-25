@@ -177,3 +177,7 @@ Agent skills standard : https://agentskills.io/home
 Lang Chain Agents : https://docs.langchain.com/oss/python/langchain/agents 
 
 Agent Tools : https://docs.langchain.com/oss/python/langchain/tools
+
+Adding Guardrail to Agents : 
+    https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-use-converse-api.html
+    https://reference.langchain.com/python/langchain-aws/chat_models/bedrock_converse/ChatBedrockConverse/guardrail_config
