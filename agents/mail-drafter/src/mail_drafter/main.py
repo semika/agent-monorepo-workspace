@@ -72,8 +72,8 @@ sonet_model = ChatBedrockConverse(
         model_id=settings.model_id,  # cross-region inference profile
         region_name=settings.aws_region,
         temperature=1,
-        provider='anthropic',
-        guardrail_config=GUARDRAIL_CONFIG
+        provider='anthropic'
+        #guardrail_config=GUARDRAIL_CONFIG
     )
 
 # Model for reviewer
@@ -82,8 +82,8 @@ opus_model = ChatBedrockConverse(
         model_id=settings.model_id,  # cross-region inference profile
         region_name=settings.aws_region,
         temperature=1,
-        provider='anthropic',
-        guardrail_config=GUARDRAIL_CONFIG
+        provider='anthropic'
+        #guardrail_config=GUARDRAIL_CONFIG
     )
 
 
@@ -291,6 +291,22 @@ graph_path = os.path.join(os.path.dirname(__file__), "..", "..", "multi-agent-wo
 with open(graph_path, "wb") as f:
     f.write(agent.get_graph(xray=True).draw_mermaid_png())
 
+bedrock_rt = boto3.client("bedrock-runtime", region_name=settings.aws_region)
+
+def guardrail_block_message(text: str, source: str) -> str | None:
+    """Returns the guardrail's blocked message if it intervened, else None."""
+    resp = bedrock_rt.apply_guardrail(
+        guardrailIdentifier=settings.guardrail_id,
+        guardrailVersion=settings.guardrail_version,
+        source=source,                      # "INPUT" or "OUTPUT"
+        content=[{"text": {"text": text}}],
+    )
+    logger.info(f"Guardrail Intervened : {resp}")
+    if resp["action"] == "GUARDRAIL_INTERVENED":
+        outputs = resp.get("outputs") or [{"text": "This request can't be processed."}]
+        return outputs[0]["text"]          # your blockedInputMessaging / blockedOutputsMessaging
+    return None
+
 @app.post("/invocations", response_model=InvocationResponse)
 async def invoke_agent(request: InvocationRequest):
     try:
@@ -317,6 +333,12 @@ async def invoke_agent(request: InvocationRequest):
                 status_code=400,
                 detail="No user_id found in input. Please provide a 'user_id' key so drafted emails can be saved to that user's history."
             )
+        
+        #Apply guardrails
+        if (msg := guardrail_block_message(user_query, "INPUT")):
+            return InvocationResponse(output={"status": "blocked", "message": msg,
+                                            "session_id": session_id,
+                                            "timestamp": datetime.utcnow().isoformat()})
 
         thread_id = f"{user_id}:{session_id}"
         config = {"configurable": {"thread_id": thread_id}}
@@ -363,6 +385,15 @@ async def invoke_agent(request: InvocationRequest):
                 Review decision: {result['review_decision']}\n
                 Revision count: {result['revision_count']}\n
                 """
+        ## Apply guardrails for final draft response
+        if (msg := guardrail_block_message(result["draft_response"], "OUTPUT")):
+            return InvocationResponse(output={
+                                                "status": "blocked", 
+                                                "message": msg,
+                                                "session_id": session_id,
+                                                "timestamp": datetime.utcnow().isoformat()
+                                                })
+        
         write_text_file("final_output.txt", final_output)
         logger.info(final_output)
         print(final_output)
